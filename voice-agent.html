@@ -35,7 +35,8 @@
       lang: "es-CL",
       kw: {
         ok: ["listo", "ok", "ya", "continuar"],
-        rep: ["repite", "otra vez", "no entendi", "no entendí"],
+        // Incluye "repetir" para que el usuario pueda decirlo de manera natural.
+        rep: ["repite", "repetir", "otra vez", "no entendi", "no entendí"],
         back: ["atrás", "volver"],
         help: ["ayuda", "no sé", "no se"]
       },
@@ -225,6 +226,13 @@
     else if(hasAny(kw.back)) intent = 'back';
     else if(hasAny(kw.help)) intent = 'help';
     else if(t.includes('nuevo')) intent = 'nuevo';
+    // Detecta comandos para reiniciar desde el principio.
+    if(!intent){
+      if(t.includes('inicio') || t.includes('principio') || t.includes('comenzar') || t.includes('volver al inicio')){
+        goTo('bienvenida');
+        return;
+      }
+    }
     if(intent) nextByIntent(intent);
   }
 
@@ -255,6 +263,9 @@
     }
     const first = expert.steps[0] ? expert.steps[0].id : 'login';
     if(typeof stepIdxById[first] === 'number'){ cur = stepIdxById[first]; }
+    // Iniciar automáticamente el asistente; si el navegador bloquea el audio,
+    // el usuario podrá tocar la pantalla y ejecutar kickstart de nuevo.
+    setTimeout(() => { try{ kickstart(); }catch(e){} }, 200);
   });
 })();
 </script>
