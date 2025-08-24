@@ -1,5 +1,5 @@
-const CACHE = "tarjeta-experta-v1";
-const ASSETS = ["./", "./voice-agent.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+const CACHE = "tarjeta-experta-v2"; // nueva versión para refrescar cache
+const ASSETS = ["./", "./index.html", "./voice-agent.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
@@ -9,8 +9,6 @@ self.addEventListener("activate", e=>{
 });
 self.addEventListener("fetch", e=>{
   e.respondWith(
-    caches.match(e.request).then(r=> r || fetch(e.request).then(res=>{
-      return res;
-    }))
+    caches.match(e.request).then(r=> r || fetch(e.request))
   );
 });
