@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8" />
+<title>Asistente de Voz – Tarjeta Experta</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+<style>html,body{margin:0;height:100%;background:#000;color:#000;}</style>
+<body>
+<script>
+(function(){
+  const qs = location.hash.slice(1);
+  const params = new URLSearchParams(qs);
+  function b64ToUtf8(b64){
+    try{
+      const bin = atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }catch(e){ return null; }
+  }
+  let expert = null;
+  if(params.get('b64')){
+    const txt = b64ToUtf8(params.get('b64'));
+    expert = JSON.parse(txt);
+  } else {
+    // Payload de ejemplo por si abres sin QR:
+    expert = {
+      v:1, lang:"es-CL",
+      kw:{ok:["listo","ok","ya","continuar"],rep:["repite","otra vez","no entendi","no entendí"],back:["atrás","volver"],help:["ayuda","no sé","no se"]},
+      steps:[
+        {id:"login",say:"Abramos tu app del banco. Cuando estés dentro, di: listo.",on:{ok:"menu",rep:"login"}},
+        {id:"menu",say:"Busca Transferencias o Enviar dinero. Cuando lo encuentres, di: listo.",on:{ok:"origen",rep:"menu",back:"login"}},
+        {id:"origen",say:"Si aparece, elige la cuenta de origen. Cuando la elijas, di: listo.",on:{ok:"dest",rep:"origen",back:"menu"}},
+        {id:"dest",say:"¿Destinatario guardado? Si sí, selecciónalo y di listo. Si es nuevo, di: nuevo.",on:{ok:"monto",nuevo:"dest_new",rep:"dest"}},
+        {id:"dest_new",say:"Ingresa nombre, RUT, banco, tipo y número de cuenta. Di: listo al terminar.",tip:"Si llega un código, cópialo y vuelve.",on:{ok:"monto",rep:"dest_new"}},
+        {id:"monto",say:"Escribe el monto con cuidado. Cuando lo tengas, di: listo.",on:{ok:"rev",rep:"monto",back:"dest"}},
+        {id:"rev",say:"Revisemos: destinatario y monto. Si está bien, di: listo. Si no, di: atrás.",on:{ok:"auth",back:"monto",rep:"rev"}},
+        {id:"auth",say:"Autenticación: abre tu token o SMS y confirma. Di: listo al terminar.",on:{ok:"ok",rep:"auth",back:"rev"}},
+        {id:"ok",say:"¡Listo! Transferencia enviada. Para repetir pasos, di: repetir. Para terminar, di: listo.",on:{rep:"menu",ok:"end"}},
+        {id:"end",say:"Proceso finalizado. Bien hecho."}
+      ]
+    };
+  }
+
+  let stepIdxById = {}; expert.steps.forEach((s,i)=>stepIdxById[s.id]=i);
+  let cur = 0, speaking=false;
+
+  function speak(text, cb){
+    speaking = true;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = expert.lang || "es-CL";
+    u.rate = 0.95;
+    u.onend = ()=>{ speaking=false; cb && cb(); };
+    try{ if (speechSynthesis.paused) speechSynthesis.resume(); }catch(e){}
+    speechSynthesis.speak(u);
+  }
+  const KW = expert.kw || { ok:["listo"], rep:["repite"], back:["atrás"], help:["ayuda"] };
+  function intentFrom(text){
+    const t = (text||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+    const hasAny = arr => arr && arr.some(k=> t.includes(k));
+    if (hasAny(KW.ok)) return "ok";
+    if (hasAny(KW.rep)) return "rep";
+    if (hasAny(KW.back)) return "back";
+    if (hasAny(KW.help)) return "help";
+    if (t.includes("nuevo")) return "nuevo";
+    return null;
+  }
+
+  let rec=null;
+  function startASR(){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR) return;
+    rec = new SR(); rec.lang = expert.lang || "es-CL";
+    rec.continuous = true; rec.interimResults = false;
+    rec.onresult = (ev)=>{
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        if(ev.results[i].isFinal){
+          const said = ev.results[i][0].transcript.trim();
+          if(speaking) { setTimeout(()=>handleUserSpeech(said), 350); }
+          else { handleUserSpeech(said); }
+        }
+      }
+    };
+    rec.onend = ()=>{ try{ rec.start(); }catch(e){} };
+    try{ rec.start(); }catch(e){}
+  }
+  function goTo(id){
+    if(id==="end"){ speak("Proceso finalizado. Gracias."); return; }
+    const i = stepIdxById[id]; if(typeof i!=="number") return;
+    cur = i; const s = expert.steps[cur];
+    let text = s.say; if (s.tip) text += " Consejo: " + s.tip;
+    speak(text);
+  }
+  function nextByIntent(intent){
+    const s = expert.steps[cur], on = s.on || {};
+    const target = on[intent];
+    if (target) goTo(target);
+    else if (intent==="rep") goTo(s.id);
+  }
+  function handleUserSpeech(said){ const intent = intentFrom(said); if(intent) nextByIntent(intent); }
+
+  document.addEventListener('visibilitychange', ()=> {
+    if (document.visibilityState==="visible" && speechSynthesis.paused) speechSynthesis.resume();
+  });
+
+  window.addEventListener('load', ()=>{
+    if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
+    startASR();
+    goTo(expert.steps[0]?.id || "login");
+  });
+})();
+</script>
+</body>
+</html>
