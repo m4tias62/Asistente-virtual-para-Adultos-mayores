@@ -1,12 +1,7 @@
 // Service Worker para la Tarjeta Experta
-// Versión (v5): invalida cachés anteriores y toma control al instalar.
-const CACHE = "tarjeta-experta-v5";
-const ASSETS = [
-  "./",
-  "./index.html",
-  "./voice-agent.html",
-  "./manifest.json"
-];
+// Versión (v6): invalida cachés previas y toma control al instalar.
+const CACHE = "tarjeta-experta-v6";
+const ASSETS = ["./", "./index.html", "./voice-agent.html", "./manifest.json"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -18,13 +13,11 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((key) => key !== CACHE && caches.delete(key)))
+      Promise.all(keys.map((k) => k !== CACHE && caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((r) => r || fetch(event.request))
-  );
+  event.respondWith(caches.match(event.request).then((r) => r || fetch(event.request)));
 });
