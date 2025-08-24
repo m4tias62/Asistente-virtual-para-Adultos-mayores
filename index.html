@@ -4,15 +4,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tarjeta Experta – redirigiendo…</title>
 <script>
-  // Redirige a voice-agent.html preservando cualquier parámetro de consulta (search) y fragmento (hash).
+  // Conserva ?v=5 (u otros params) y #b64=... al redirigir
   (function () {
-    var search = window.location.search || ""; // ejemplo: ?v=4
-    var hash   = window.location.hash   || ""; // ejemplo: #b64=...
-    // Construye la nueva URL manteniendo query y hash
+    var search = window.location.search || ""; // p.ej. ?v=5
+    var hash   = window.location.hash   || ""; // p.ej. #b64=...
     window.location.replace("voice-agent.html" + search + hash);
   })();
 </script>
 <noscript>
-  <p>Para utilizar el asistente de voz debes tener JavaScript habilitado. Abre <a href="voice-agent.html">voice-agent.html</a> directamente.</p>
+  <p>Activa JavaScript. Abre <a href="voice-agent.html">voice-agent.html</a>.</p>
 </noscript>
 </html>
