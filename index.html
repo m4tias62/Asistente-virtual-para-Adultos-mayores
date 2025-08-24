@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Tarjeta Experta – redirigiendo…</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  // Redirige a voice-agent.html y conserva cualquier fragmento (#b64=...)
+  (function(){
+    var frag = window.location.hash || "";
+    window.location.replace("voice-agent.html" + frag);
+  })();
+</script>
+<noscript>
+  <p>Necesitas JavaScript. Abre <a href="voice-agent.html">voice-agent.html</a>.</p>
+</noscript>
+</html>
