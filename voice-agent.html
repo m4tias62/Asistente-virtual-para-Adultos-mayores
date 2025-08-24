@@ -9,6 +9,7 @@
 <body>
 <script>
 (function(){
+  // -------- Utilidades --------
   const qs = location.hash.slice(1);
   const params = new URLSearchParams(qs);
   function b64ToUtf8(b64){
@@ -18,12 +19,14 @@
       return new TextDecoder().decode(bytes);
     }catch(e){ return null; }
   }
+
+  // -------- Cargar "experto" --------
   let expert = null;
   if(params.get('b64')){
     const txt = b64ToUtf8(params.get('b64'));
     expert = JSON.parse(txt);
   } else {
-    // Payload de ejemplo por si abres sin QR:
+    // Payload de ejemplo si no viene QR
     expert = {
       v:1, lang:"es-CL",
       kw:{ok:["listo","ok","ya","continuar"],rep:["repite","otra vez","no entendi","no entendí"],back:["atrás","volver"],help:["ayuda","no sé","no se"]},
@@ -42,18 +45,32 @@
     };
   }
 
+  // -------- Estado --------
   let stepIdxById = {}; expert.steps.forEach((s,i)=>stepIdxById[s.id]=i);
-  let cur = 0, speaking=false;
+  let cur = 0, speaking=false, unlocked=false;
 
+  // -------- TTS --------
+  function ensureVoices(cb){
+    const have = speechSynthesis.getVoices();
+    if (have && have.length){ cb(); return; }
+    window.speechSynthesis.onvoiceschanged = function(){ cb(); };
+    setTimeout(cb, 1000);
+  }
   function speak(text, cb){
+    try{ speechSynthesis.cancel(); }catch(e){}
     speaking = true;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = expert.lang || "es-CL";
     u.rate = 0.95;
     u.onend = ()=>{ speaking=false; cb && cb(); };
-    try{ if (speechSynthesis.paused) speechSynthesis.resume(); }catch(e){}
-    speechSynthesis.speak(u);
+    setTimeout(()=>{ if(speaking) speaking=false; }, 4000);
+    try{
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      speechSynthesis.speak(u);
+    }catch(e){ speaking=false; }
   }
+
+  // -------- Intents --------
   const KW = expert.kw || { ok:["listo"], rep:["repite"], back:["atrás"], help:["ayuda"] };
   function intentFrom(text){
     const t = (text||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -66,30 +83,37 @@
     return null;
   }
 
+  // -------- ASR (Android/Chrome) --------
   let rec=null;
   function startASR(){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if(!SR) return;
-    rec = new SR(); rec.lang = expert.lang || "es-CL";
-    rec.continuous = true; rec.interimResults = false;
-    rec.onresult = (ev)=>{
-      for(let i=ev.resultIndex;i<ev.results.length;i++){
-        if(ev.results[i].isFinal){
-          const said = ev.results[i][0].transcript.trim();
-          if(speaking) { setTimeout(()=>handleUserSpeech(said), 350); }
-          else { handleUserSpeech(said); }
+    if(!SR) return; // iOS no soporta
+    try{
+      rec = new SR();
+      rec.lang = expert.lang || "es-CL";
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.onresult = (ev)=>{
+        for(let i=ev.resultIndex;i<ev.results.length;i++){
+          if(ev.results[i].isFinal){
+            const said = ev.results[i][0].transcript.trim();
+            if(speaking) { setTimeout(()=>handleUserSpeech(said), 350); }
+            else { handleUserSpeech(said); }
+          }
         }
-      }
-    };
-    rec.onend = ()=>{ try{ rec.start(); }catch(e){} };
-    try{ rec.start(); }catch(e){}
+      };
+      rec.onend = ()=>{ try{ rec.start(); }catch(e){} };
+      rec.start();
+    }catch(e){ /* ignore */ }
   }
+
+  // -------- Navegación de pasos --------
   function goTo(id){
-    if(id==="end"){ speak("Proceso finalizado. Gracias."); return; }
+    if(id==="end"){ ensureVoices(()=> speak("Proceso finalizado. Gracias.") ); return; }
     const i = stepIdxById[id]; if(typeof i!=="number") return;
     cur = i; const s = expert.steps[cur];
     let text = s.say; if (s.tip) text += " Consejo: " + s.tip;
-    speak(text);
+    ensureVoices(()=> speak(text) );
   }
   function nextByIntent(intent){
     const s = expert.steps[cur], on = s.on || {};
@@ -99,16 +123,32 @@
   }
   function handleUserSpeech(said){ const intent = intentFrom(said); if(intent) nextByIntent(intent); }
 
+  // -------- Desbloqueo por gesto (iOS/Android) --------
+  function kickstart(){
+    if (unlocked) return;
+    unlocked = true;
+    const s = expert.steps[cur];
+    let text = s.say; if (s.tip) text += " Consejo: " + s.tip;
+    ensureVoices(()=> speak(text) );
+    startASR();
+  }
+  document.addEventListener('pointerdown', kickstart, {once:true});
+  document.addEventListener('keydown', kickstart, {once:true});
+
   document.addEventListener('visibilitychange', ()=> {
-    if (document.visibilityState==="visible" && speechSynthesis.paused) speechSynthesis.resume();
+    if (document.visibilityState==="visible" && speechSynthesis.paused) {
+      try{ speechSynthesis.resume(); }catch(e){}
+    }
   });
 
+  // -------- Inicio --------
   window.addEventListener('load', ()=>{
     if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
-    startASR();
     goTo(expert.steps[0]?.id || "login");
+    startASR();
   });
 })();
 </script>
 </body>
 </html>
+
