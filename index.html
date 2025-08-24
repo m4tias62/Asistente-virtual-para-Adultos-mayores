@@ -4,14 +4,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tarjeta Experta – redirigiendo…</title>
 <script>
-  // Redirige a voice-agent.html y conserva cualquier fragmento (#b64=…)
+  // Al abrir el índice, redirige a voice-agent.html conservando cualquier fragmento (#b64=...)
   (function(){
     var frag = window.location.hash || "";
     window.location.replace("voice-agent.html" + frag);
   })();
 </script>
 <noscript>
-  <p>Para utilizar el asistente de voz necesitas JavaScript. Abre <a href="voice-agent.html">voice-agent.html</a> directamente.</p>
+  <p>Para utilizar el asistente de voz debes tener JavaScript habilitado. Abre <a href="voice-agent.html">voice-agent.html</a> directamente.</p>
 </noscript>
 </html>
-
