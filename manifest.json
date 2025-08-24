@@ -1,5 +1,5 @@
 {
-  "name": "Tarjeta-Experta-v4",
+  "name": "Tarjeta-Experta",
   "short_name": "Experta",
   "start_url": "./voice-agent.html",
   "display": "standalone",
