@@ -102,4 +102,12 @@
     tapTimer = setTimeout(commitTaps, 300);
   });
 
-  audio.addEventLi
+  audio.addEventListener('ended', ()=>{ /* espera interacción */ });
+
+  // Inicio
+  T.innerHTML = 'Toca una vez para comenzar.<div class="hint">Toque: <b>Continuar</b> • Doble toque: <b>repetir explicación</b> • Toque largo: <b>reiniciar explicación</b></div>';
+})();
+</script>
+</body>
+</html>
+
