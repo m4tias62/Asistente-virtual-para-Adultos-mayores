@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agente – Audio (doble guion)</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,Arial,sans-serif}
+  .screen{display:flex;height:100%;align-items:center;justify-content:center;text-align:center;padding:24px}
+  .txt{max-width:720px;font-size:1.6rem;line-height:1.45}
+  .hint{opacity:.6;font-size:1rem;margin-top:12px}
+  .badge{display:inline-block;margin:.5rem 0;padding:.15rem .5rem;border:1px solid #fff3;border-radius:999px;font-size:.9rem;opacity:.75}
+</style>
+<body>
+<div class="screen">
+  <div class="txt" id="t">Toca una vez para comenzar.<div class="hint">Doble toque: Repetir explicación simple • Triple toque: Repetir normal • Toque largo: reiniciar</div></div>
+</div>
+<script>
+(function(){
+  // === 1) Definición de pasos con guion A (normal) y B (simple) ===
+  const steps = [
+    {
+      id:"bienvenida",
+      A:{ text:"Hola, seré tu asistente para realizar una transferencia. Cuando estés listo para empezar, toca la pantalla.",
+          file:"01A-bienvenida.m4a" },
+      B:{ text:"Hola. Te voy a guiar paso a paso para realizar tu transferencia. Para empezar, toca la pantalla.",
+          file:"01B-bienvenida-simple.m4a" }
+    },
+    {
+      id:"login",
+      A:{ text:"Abre la aplicación de tu banco e ingresa con tu huella o clave. Cuando estés dentro, toca para continuar.",
+          file:"02A-login.m4a" },
+      B:{ text:"Abre tu app del banco y entra. Cuando ya estés adentro, toca la pantalla y avanzamos al siguiente paso.",
+          file:"02B-login-simple.m4a" }
+    },
+    {
+      id:"menu",
+      A:{ text:"Busca la opción Transferencias o Enviar dinero y selecciónala. Luego toca para seguir.",
+          file:"03A-menu.m4a" },
+      B:{ text:"En la app, entra a Transferencias. Después, toca para seguir.",
+          file:"03B-menu-simple.m4a" }
+    },
+    {
+      id:"origen",
+      A:{ text:"Elige la cuenta desde la que enviarás el dinero. Cuando esté seleccionada, toca para continuar. Si solo tienes una cuenta, avanza directamente al siguiente paso tocando la pantalla.",
+          file:"04A-origen.m4a" },
+      B:{ text:"Selecciona tu cuenta de origen, si solo tienes una ignora este paso y toca la pantalla para continuar.",
+          file:"04B-origen-simple.m4a" }
+    },
+    {
+      id:"dest",
+      A:{ text:"Selecciona un destinatario guardado o crea uno nuevo con su RUT, banco y número de cuenta. Toca para seguir.",
+          file:"05A-destinatario.m4a" },
+      B:{ text:"Elige a quién le vas a transferir. Si no lo tienes, agrégalo con sus datos. Luego toca la pantalla.",
+          file:"05B-destinatario-simple.m4a" }
+    },
+    {
+      id:"monto",
+      A:{ text:"Escribe el monto con cuidado. Revisa los ceros. Cuando esté correcto, toca para seguir.",
+          file:"06A-monto.m4a" },
+      B:{ text:"Ingresa el monto. Verifica que esté bien. Toca para continuar.",
+          file:"06B-monto-simple.m4a" }
+    },
+    {
+      id:"rev",
+      A:{ text:"Revisa que nombre, banco, cuenta y monto estén correctos. Si está bien, toca para continuar.",
+          file:"07A-revision.m4a" },
+      B:{ text:"Mira que todos los datos estén correctos. Si está todo bien, toca para seguir.",
+          file:"07B-revision-simple.m4a" }
+    },
+    {
+      id:"auth",
+      A:{ text:"Autoriza la transferencia con tu clave de seguridad o el código SMS. Cuando confirmes, toca para continuar.",
+          file:"08A-autorizacion.m4a" },
+      B:{ text:"Ingresa el código que te piden (clave o SMS u otro método de validación). Cuando termines, toca.",
+          file:"08B-autorizacion-simple.m4a" }
+    },
+    {
+      id:"ok",
+      A:{ text:"¡Listo! Transferencia enviada. Si quieres hacer otra, vuelve a Transferencias.",
+          file:"09A-final.m4a" },
+      B:{ text:"¡Excelente! La transferencia se envió. Puedes salir o hacer otra.",
+          file:"09B-final-simple.m4a" }
+    }
+  ];
+
+  // === 2) Estado y reproductor ===
+  let cur = -1, audio = new Audio(), lastVariant = "A";
+  const T = document.getElementById("t");
+  audio.preload = "auto";
+
+  function vibr(ms){ if(navigator.vibrate) try{ navigator.vibrate(ms); }catch(e){} }
+
+  function renderText(i, variant){
+    const tag = (variant==="B") ? '<span class="badge">Explicación simple</span>' : '';
+    T.innerHTML = tag + steps[i][variant].text +
+      '<div class="hint">Toque: continuar • Doble toque: simple • Triple toque: repetir normal • Largo: reiniciar</div>';
+  }
+
+  function play(i, variant){
+    if(i<0 || i>=steps.length) return;
+    cur = i; lastVariant = variant || "A";
+    const item = steps[i][lastVariant];
+    renderText(i, lastVariant);
+    audio.src = item.file;
+    audio.currentTime = 0;
+    audio.play().catch(()=>{ /* si el navegador pide gesto, se reproducirá tras el siguiente toque */ });
+  }
+
+  function next(){ if(cur < 0){ play(0,"A"); } else if(cur < steps.length-1){ play(cur+1,"A"); } }
+  function repeatA(){ if(cur>=0){ play(cur,"A"); } }
+  function repeatB(){ if(cur>=0){ play(cur,"B"); } }
+  function restart(){ play(0,"A"); }
+
+  // === 3) Gestos: simple / doble / triple / largo ===
+  let tapCount = 0, tapTimer = null, downAt = 0, longTimer = null;
+
+  function commitTaps(){
+    const n = tapCount;
+    tapCount = 0; tapTimer = null;
+    if(n===1){ next(); vibr(10); }
+    else if(n===2){ repeatB(); vibr([10,60,10]); }       // explicación simple
+    else if(n>=3){ repeatA(); vibr([20,40,20,40,20]); }  // repetir normal
+  }
+
+  window.addEventListener('pointerdown', ()=>{
+    downAt = Date.now();
+    // detección de largo
+    longTimer = setTimeout(()=>{ restart(); vibr([20,60,20]); tapCount=0; if(tapTimer){clearTimeout(tapTimer); tapTimer=null;} }, 600);
+  });
+
+  window.addEventListener('pointerup', ()=>{
+    const dur = Date.now() - downAt;
+    clearTimeout(longTimer);
+    if(dur >= 600) return; // ya se reinició por "largo"
+    // conteo de toques
+    tapCount++;
+    if(tapTimer) clearTimeout(tapTimer);
+    tapTimer = setTimeout(commitTaps, 300);
+  });
+
+  // No auto-avanza al terminar audio
+  audio.addEventListener('ended', ()=>{ /* espera interacción */ });
+
+  // Inicio
+  T.innerHTML = 'Toca una vez para comenzar.<div class="hint">Doble toque: explicación simple • Triple toque: repetir normal • Toque largo: reiniciar</div>';
+})();
+</script>
+</body>
+</html>
