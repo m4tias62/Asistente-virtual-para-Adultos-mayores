@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Redirigiendo…</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+  (function () {
+    // Conserva ?v=... y #... al redirigir
+    var search = window.location.search || "";
+    var hash   = window.location.hash   || "";
+    var target = "asistente-experto.html" + search + hash;
+    // replace() evita que el usuario “vuelva” a la portada vacía
+    window.location.replace(target);
+  })();
+</script>
+<noscript>
+  <a href="asistente-experto.html">Ir al asistente</a>
+</noscript>
+</html>
