@@ -9,7 +9,6 @@
 <body>
 <script>
 (function(){
-  // --- Utilidades ---
   const qs = location.hash.slice(1);
   const params = new URLSearchParams(qs);
   function b64ToUtf8(b64){
@@ -20,7 +19,7 @@
     }catch(e){ return null; }
   }
 
-  // --- Cargar guion (experto) ---
+  // ----- Guion por defecto (si no viene #b64=...) -----
   let expert = null;
   if(params.get('b64')){
     try{ expert = JSON.parse(b64ToUtf8(params.get('b64'))); }catch(e){ expert=null; }
@@ -67,20 +66,19 @@
         { id:"ok",
           say:"¡Excelente! Transferencia enviada. Si quieres hacer otra, di: repetir. Para terminar, di: listo.",
           on:{ rep:"menu", ok:"end" } },
-        { id:"end",
-          say:"Proceso finalizado. Gracias por usar el asistente." }
+        { id:"end", say:"Proceso finalizado. Gracias por usar el asistente." }
       ]
     };
   }
 
-  // --- Estado ---
+  // ----- Estado -----
   let stepIdxById={}; expert.steps.forEach((s,i)=>stepIdxById[s.id]=i);
-  let cur=0, started=false, speaking=false, welcomeSaid=false;
+  let cur=0, started=false, speaking=false, welcomeSpoken=false;
   let reminderTimer=null;
 
-  // --- Voz (TTS) ---
+  // ----- TTS -----
   function pickVoice(){
-    const v = speechSynthesis.getVoices()||[];
+    const v=speechSynthesis.getVoices()||[];
     const prefs=["es-CL","es-419","es-MX","es-ES","es"];
     for(const p of prefs){
       const m=v.find(x=>x.lang&&x.lang.toLowerCase().startsWith(p.toLowerCase()));
@@ -110,7 +108,7 @@
     }catch(e){ speaking=false; }
   }
 
-  // --- Desbloqueo audio + warmup ---
+  // ----- Unlock audio + warmup + mic permiso -----
   let unlocked=false;
   function unlockAudio(){
     if(unlocked) return Promise.resolve();
@@ -136,8 +134,16 @@
       speechSynthesis.speak(u);
     }catch(e){ cb&&cb(); }
   }
+  function requestMicOnce(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) return;
+    try{
+      navigator.mediaDevices.getUserMedia({audio:true})
+        .then(s => s.getTracks().forEach(t=>t.stop()))
+        .catch(()=>{});
+    }catch(e){}
+  }
 
-  // --- Reconocimiento (Android/Chrome) ---
+  // ----- ASR (Android/Chrome) -----
   let rec=null;
   function startASR(){
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -161,28 +167,28 @@
     }catch(e){}
   }
 
-  // --- Recordatorio suave por paso ---
+  // ----- Recordatorio -----
   function scheduleReminder(){
     if(reminderTimer) clearTimeout(reminderTimer);
-    reminderTimer = setTimeout(()=>{
-      const s=expert.steps[cur];
+    reminderTimer=setTimeout(()=>{
       ensureVoices(()=> speak("Te espero el tiempo que sea necesario para avanzar. Cuando estés listo, di: listo.") );
-    }, 25000); // ~25s sin respuesta
+    }, 20000);
   }
 
-  // --- Navegación de pasos ---
+  // ----- Pasos -----
   function goTo(id){
     const i=stepIdxById[id]; if(typeof i!=="number") return;
     cur=i; const s=expert.steps[cur];
     let text=s.say; if(s.tip) text += " Consejo: " + s.tip;
-    ensureVoices(()=> speak(text, ()=>{ if(s.id==="bienvenida") welcomeSaid=true; }) );
+    ensureVoices(()=> speak(text, ()=>{ if(s.id==="bienvenida") welcomeSpoken=true; }));
+    if(navigator.vibrate && s.id==="bienvenida") navigator.vibrate([15,60,15]); // feedback sutil
     scheduleReminder();
   }
   function nextByIntent(intent){
     const s=expert.steps[cur], on=s.on||{};
     const target=on[intent];
-    if(target){ goTo(target); }
-    else if(intent==="rep"){ goTo(s.id); }
+    if(target) goTo(target);
+    else if(intent==="rep") goTo(s.id);
   }
   function handleUserSpeech(said){
     const t=(said||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -193,37 +199,33 @@
     if(hasAny(kw.back)) return nextByIntent("back");
     if(hasAny(kw.help)) return nextByIntent("help");
     if(t.includes("nuevo")) return nextByIntent("nuevo");
-    // Reiniciar guía
-    if(t.includes("inicio") || t.includes("principio") || t.includes("comenzar")){
+    if(t.includes("inicio")||t.includes("principio")||t.includes("comenzar")){
       goTo("bienvenida"); return;
     }
   }
 
-  // --- Arranque robusto ---
+  // ----- Arranque con reintentos -----
   function kickstart(){
     if(started) return;
     started=true;
-    unlockAudio().then(()=>warmupTTS(()=>{
+    unlockAudio().then(()=>{ requestMicOnce(); warmupTTS(()=>{
       const first=expert.steps[0]?expert.steps[0].id:"bienvenida";
       goTo(first);
       startASR();
-    }));
+    })});
+  }
+  function autoStartLoop(){
+    let tries=0;
+    const tick=()=>{ if(welcomeSpoken || tries>=4) return; tries++; kickstart(); setTimeout(tick, 1200); };
+    setTimeout(tick, 250);
   }
 
-  // Intento automático + fallback por toque/tecla
   document.addEventListener('pointerdown', kickstart, {once:true});
   document.addEventListener('keydown', kickstart, {once:true});
   window.addEventListener('load', ()=>{
     if('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw.js'); }
-    // Auto-start; si el navegador bloquea, el tap activará kickstart igualmente
-    setTimeout(()=>{
-      // Reintenta dos veces por si voces aún no cargan
-      kickstart();
-      setTimeout(()=>{ if(!welcomeSaid) kickstart(); }, 1200);
-    }, 200);
+    autoStartLoop(); // intenta automáticamente varias veces
   });
-
-  // Reanudar voz al volver a foreground
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState==="visible" && speechSynthesis.paused){
       try{ speechSynthesis.resume(); }catch(e){}
@@ -233,4 +235,3 @@
 </script>
 </body>
 </html>
-
